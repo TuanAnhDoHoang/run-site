@@ -1,3 +1,4 @@
+
 #!/bin/bash
 # Script chạy Walrus Sites Portal (Testnet) với SITE_PACKAGE tùy chỉnh
 # Cách dùng:
@@ -18,16 +19,16 @@ LOCAL_ENV="portal/server/.env.local"
 # Giá trị SITE_PACKAGE testnet mới nhất (cập nhật đến 2026 - kiểm tra repo/docs nếu cần)
 DEFAULT_SITE_PACKAGE="0xf99aee9f21493e1590e7e5a9aea6f343a1f381031a04a732724871fc294be799"
 
-# Nhận argument (SITE_PACKAGE object ID)
-CUSTOM_SITE_PACKAGE="$1"
+# # Nhận argument (SITE_PACKAGE object ID)
+# CUSTOM_SITE_PACKAGE="$1"
 
-# Nếu không có argument, gợi ý cách dùng
-if [ -z "$CUSTOM_SITE_PACKAGE" ]; then
-    echo "Cảnh báo: Chưa cung cấp SITE_PACKAGE."
-    echo "Cách dùng: $0 <SITE_PACKAGE_ID>"
-    echo "Ví dụ: $0 0xf99aee9f21493e1590e7e5a9aea6f343a1f381031a04a732724871fc294be799"
-    exit 1
-fi
+# # Nếu không có argument, gợi ý cách dùng
+# if [ -z "$CUSTOM_SITE_PACKAGE" ]; then
+#     echo "Cảnh báo: Chưa cung cấp SITE_PACKAGE."
+#     echo "Cách dùng: $0 <SITE_PACKAGE_ID>"
+#     echo "Ví dụ: $0 0xf99aee9f21493e1590e7e5a9aea6f343a1f381031a04a732724871fc294be799"
+#     exit 1
+# fi
 
 echo "Kiểm tra công cụ cần thiết..."
 
