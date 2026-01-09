@@ -1,0 +1,144 @@
+#!/bin/bash
+# Script chạy Walrus Sites Portal (Testnet) với SITE_PACKAGE tùy chỉnh
+# Cách dùng:
+#   ./run-walrus-portal.sh                     # Nếu .env.local đã có SITE_PACKAGE hợp lệ
+#   ./run-walrus-portal.sh 0xabc123...         # Thay SITE_PACKAGE bằng giá trị cung cấp
+
+set -e  # Thoát ngay nếu có lỗi
+
+REPO_URL="https://github.com/MystenLabs/walrus-sites.git"
+DIR="walrus-sites"
+BRANCH="main"  # Branch chứa config testnet
+CONTAINER_NAME="walrus-portal-server"
+IMAGE_NAME="server-portal"
+PORT="3000"
+EXAMPLE_ENV="portal/server/.env.testnet.example"
+LOCAL_ENV="portal/server/.env.local"
+
+# Giá trị SITE_PACKAGE testnet mới nhất (cập nhật đến 2026 - kiểm tra repo/docs nếu cần)
+DEFAULT_SITE_PACKAGE="0xf99aee9f21493e1590e7e5a9aea6f343a1f381031a04a732724871fc294be799"
+
+# Nhận argument (SITE_PACKAGE object ID)
+CUSTOM_SITE_PACKAGE="$1"
+
+# Nếu không có argument, gợi ý cách dùng
+if [ -z "$CUSTOM_SITE_PACKAGE" ]; then
+    echo "Cảnh báo: Chưa cung cấp SITE_PACKAGE."
+    echo "Cách dùng: $0 <SITE_PACKAGE_ID>"
+    echo "Ví dụ: $0 0xf99aee9f21493e1590e7e5a9aea6f343a1f381031a04a732724871fc294be799"
+    exit 1
+fi
+
+echo "Kiểm tra công cụ cần thiết..."
+
+if ! command -v git &> /dev/null; then
+    echo "Lỗi: git chưa cài. Vui lòng cài git."
+    exit 1
+fi
+
+if ! command -v docker &> /dev/null; then
+    echo "Lỗi: docker chưa cài. Vui lòng cài Docker."
+    exit 1
+fi
+
+if ! docker info &> /dev/null; then
+    echo "Lỗi: Docker daemon chưa chạy. Vui lòng khởi động Docker."
+    exit 1
+fi
+
+echo "Đã thỏa mãn các yêu cầu."
+
+# Clone repo nếu chưa có
+if [ ! -d "$DIR" ]; then
+    echo "Cloning repository..."
+    git clone "$REPO_URL"
+else
+    echo "Repository đã tồn tại."
+fi
+
+cd "$DIR"
+
+# Copy example để tạo .env.local (nếu chưa có)
+if [ ! -f "$LOCAL_ENV" ]; then
+    if [ -f "$EXAMPLE_ENV" ]; then
+        echo "Tạo $LOCAL_ENV từ example testnet..."
+        cp "$EXAMPLE_ENV" "$LOCAL_ENV"
+    else
+        echo "Lỗi: Không tìm thấy $EXAMPLE_ENV. Vui lòng kiểm tra repo."
+        exit 1
+    fi
+else
+    echo "$LOCAL_ENV đã tồn tại."
+fi
+
+# Kiểm tra SITE_PACKAGE hiện tại
+HAS_VALID_SITE_PACKAGE=true
+if grep -q "^SITE_PACKAGE=" "$LOCAL_ENV"; then
+    CURRENT_SITE_PACKAGE=$(grep "^SITE_PACKAGE=" "$LOCAL_ENV" | cut -d '=' -f2 | tr -d '"')
+    if [ -z "$CURRENT_SITE_PACKAGE" ] || [ "$CURRENT_SITE_PACKAGE" = "your_site_package_id_here" ]; then
+        HAS_VALID_SITE_PACKAGE=false
+    else
+        echo "Đã có SITE_PACKAGE: $CURRENT_SITE_PACKAGE"
+    fi
+else
+    HAS_VALID_SITE_PACKAGE=false
+fi
+
+# Nếu không có argument và không hợp lệ → hỏi dùng default
+if [ -z "$CUSTOM_SITE_PACKAGE" ] && [ "$HAS_VALID_SITE_PACKAGE" = false ]; then
+    echo ""
+    echo "Không tìm thấy SITE_PACKAGE hợp lệ trong $LOCAL_ENV."
+    echo "SITE_PACKAGE là Package ID của Walrus Sites trên Testnet (bắt buộc)."
+    echo ""
+    echo "Gợi ý sử dụng giá trị testnet hiện tại:"
+    echo "   $DEFAULT_SITE_PACKAGE"
+    echo ""
+    echo "Bạn có muốn sử dụng giá trị này? (y/N)"
+    read -r response
+    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        CUSTOM_SITE_PACKAGE="$DEFAULT_SITE_PACKAGE"
+        echo "Sử dụng SITE_PACKAGE mặc định."
+    else
+        echo "Thoát. Chạy lại script với argument SITE_PACKAGE (ví dụ: $0 $DEFAULT_SITE_PACKAGE)"
+        exit 1
+    fi
+fi
+
+# Cập nhật nếu có CUSTOM_SITE_PACKAGE
+if [ -n "$CUSTOM_SITE_PACKAGE" ]; then
+    echo "Cập nhật SITE_PACKAGE=$CUSTOM_SITE_PACKAGE trong $LOCAL_ENV..."
+    sed -i '/^SITE_PACKAGE=/d' "$LOCAL_ENV"
+    echo "SITE_PACKAGE=$CUSTOM_SITE_PACKAGE" >> "$LOCAL_ENV"
+fi
+
+# Build Docker image
+echo "Building Docker image (có thể mất thời gian)..."
+docker build -f portal/docker/server/Dockerfile -t "$IMAGE_NAME" . \
+    --build-arg ENABLE_SENTRY=false --no-cache
+
+# Dọn container cũ
+if [ "$(docker ps -q -f name=^/$CONTAINER_NAME$)" ]; then
+    echo "Dừng container cũ..."
+    docker stop "$CONTAINER_NAME"
+fi
+if [ "$(docker ps -a -q -f name=^/$CONTAINER_NAME$)" ]; then
+    echo "Xóa container cũ..."
+    docker rm "$CONTAINER_NAME"
+fi
+
+# Chạy container
+echo "Khởi động Walrus Portal (Testnet)..."
+docker run -d \
+    --name "$CONTAINER_NAME" \
+    --env-file "$LOCAL_ENV" \
+    -p "$PORT:$PORT" \
+    --restart unless-stopped \
+    "$IMAGE_NAME"
+
+echo ""
+echo "Walrus Portal đang chạy tại http://localhost:$PORT"
+echo "Container: $CONTAINER_NAME"
+echo "Dừng: docker stop $CONTAINER_NAME"
+echo "Xem log: docker logs -f $CONTAINER_NAME"
+echo ""
+echo "Lưu ý: SITE_PACKAGE có thể thay đổi. Kiểm tra repo MystenLabs/walrus-sites hoặc docs Walrus để có giá trị mới nhất."
